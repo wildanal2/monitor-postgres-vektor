@@ -1,0 +1,27 @@
+pg_stat_statements:
+  query: |
+    SELECT
+      queryid,
+      left(query, 50) AS query,
+      calls,
+      total_exec_time,
+      mean_exec_time
+    FROM pg_stat_statements
+    WHERE userid != 0
+    LIMIT 10
+  metrics:
+    - queryid:
+        usage: "LABEL"
+        description: "Unique query identifier"
+    - query:
+        usage: "LABEL"
+        description: "Normalized query text"
+    - calls:
+        usage: "COUNTER"
+        description: "Number of times executed"
+    - total_exec_time:
+        usage: "COUNTER"
+        description: "Total execution time in milliseconds"
+    - mean_exec_time:
+        usage: "GAUGE"
+        description: "Mean execution time in milliseconds"

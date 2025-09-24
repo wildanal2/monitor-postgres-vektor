@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:17-pgvector
+    environment:
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: vectordb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init-scripts.sql:/docker-entrypoint-initdb.d/init-scripts.sql
+    ports:
+      - "5430:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_statements.track=all"
+      - "-c"
+      - "pg_stat_statements.max=1000"
+      - "-c"
+      - "pg_stat_statements.save=on"
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:example@postgres:5432/vectordb?sslmode=disable"
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yml
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
+      PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
+    ports:
+      - "9187:9187"
+    depends_on:
+      - postgres
+    volumes:
+      - ./queries.yml:/etc/postgres_exporter/queries.yml
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8081:8080"
+    privileged: true
+    devices:
+      - /dev/kmsg
+
+  node_exporter:
+    image: prom/node-exporter:latest
+    ports:
+      - "9100:9100"
+    command: 
+      - '--path.procfs=/proc'
+      - '--path.sysfs=/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - cadvisor
+      - node_exporter
+      - postgres_exporter
+    command: 
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=72h'
+      - '--web.enable-lifecycle'
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
